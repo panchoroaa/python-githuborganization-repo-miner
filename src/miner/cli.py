@@ -32,12 +32,19 @@ SUPPORTED_CODEQL_LANGUAGES = {
 
 @app.command()
 def scan(
-    organization: str = typer.Option(..., "--organization", "-o", help="GitHub organization name"),
+    organization: str = typer.Option(None, "--organization", "-o", help="GitHub organization name"),
+    repo: str = typer.Option(None, "--repo", "-r", help="Single repository to scan (e.g. OWASP/NodeGoat or just NodeGoat with -o)"),
     output: str = typer.Option("results.json", "--output", "-O", help="Output JSON file path"),
     workdir: str = typer.Option(None, "--workdir", "-w", help="Working directory for clones and databases"),
     packs_root: str = typer.Option(None, "--packs-root", "-p", help="Path to CodeQL query packs (codeql-repo). Detected automatically if omitted."),
 ) -> None:
-    """Scan a GitHub organization's repositories for vulnerabilities using CodeQL."""
+    """Scan a GitHub organization's repositories (or a single repo) for vulnerabilities using CodeQL."""
+
+    if not organization and not repo:
+        console.print("[bold red]Error:[/] Provide --organization and/or --repo.")
+        raise typer.Exit(1)
+
+    org_name, repo_name = _parse_target(organization, repo)
 
     packs = Path(packs_root) if packs_root else detect_packs_root()
     if packs is None:
@@ -51,13 +58,16 @@ def scan(
     else:
         base_dir = Path(tempfile.mkdtemp(prefix="miner_"))
 
-    try:
-        repos = fetch_repos(organization)
-    except Exception as e:
-        console.print(f"[bold red]Error fetching repositories:[/] {e}")
-        raise typer.Exit(1)
-
-    console.print(f"[green]Found {len(repos)} repositories.[/]")
+    if repo_name:
+        repos = [_make_single_repo(org_name, repo_name)]
+        console.print(f"[green]Scanning single repository:[/] {org_name}/{repo_name}")
+    else:
+        try:
+            repos = fetch_repos(org_name)
+        except Exception as e:
+            console.print(f"[bold red]Error fetching repositories:[/] {e}")
+            raise typer.Exit(1)
+        console.print(f"[green]Found {len(repos)} repositories.[/]")
 
     results: list[RepositoryResult] = []
 
@@ -68,9 +78,9 @@ def scan(
     ) as progress:
         task = progress.add_task("Analyzing repositories...", total=len(repos))
 
-        for repo in repos:
-            progress.update(task, description=f"[bold]Processing {repo.name}[/]")
-            result = _analyze_repo(organization, repo.name, repo.clone_url, repo.languages_url, base_dir, packs)
+        for repo_entry in repos:
+            progress.update(task, description=f"[bold]Processing {repo_entry.name}[/]")
+            result = _analyze_repo(org_name, repo_entry.name, repo_entry.clone_url, repo_entry.languages_url, base_dir, packs)
             results.append(result)
 
             status_colors = {
@@ -82,14 +92,14 @@ def scan(
             }
             color = status_colors.get(result.status, "white")
             console.print(
-                f"  [{color}]{repo.name}: {result.status.value}[/]"
+                f"  [{color}]{repo_entry.name}: {result.status.value}[/]"
                 + (f" - {result.error_message}" if result.error_message else "")
             )
             progress.advance(task)
 
     summary = _build_summary(results)
     report = OrganizationReport(
-        organization=organization,
+        organization=org_name,
         summary=summary,
         repositories=results,
     )
@@ -100,6 +110,34 @@ def scan(
         encoding="utf-8",
     )
     console.print(f"\n[bold green]Results written to {output_path}[/]")
+
+
+def _parse_target(organization: str | None, repo: str | None) -> tuple[str, str | None]:
+    """Parse --organization and --repo into (org, repo_name | None)."""
+    if repo and "/" in repo:
+        parts = repo.split("/", 1)
+        org_from_repo, repo_name = parts[0], parts[1]
+        if organization and organization != org_from_repo:
+            console.print(f"[bold red]Error:[/] --organization '{organization}' conflicts with --repo '{repo}'.")
+            raise typer.Exit(1)
+        return org_from_repo, repo_name
+    if repo:
+        if not organization:
+            console.print("[bold red]Error:[/] --repo requires --organization (or use --repo org/repo).")
+            raise typer.Exit(1)
+        return organization, repo
+    return organization, None
+
+
+def _make_single_repo(org: str, name: str):
+    """Construct a GitHubRepo-like object for a single repo without an API call."""
+    from .github import GitHubRepo
+    return GitHubRepo(
+        name=name,
+        clone_url=f"https://github.com/{org}/{name}.git",
+        languages_url=f"https://api.github.com/repos/{org}/{name}/languages",
+        default_branch="main",
+    )
 
 
 def _analyze_repo(

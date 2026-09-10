@@ -98,8 +98,16 @@ codeql pack download codeql/javascript-security-extended
 
 ## Usage
 
+### Scan an entire organization
+
 ```powershell
 miner --organization <org-name> -O results.json
+```
+
+### Scan a single repository
+
+```powershell
+miner --repo <org>/<repo> -O results.json
 ```
 
 > **Note:** There is no `scan` subcommand — the options go directly after `miner`.
@@ -108,16 +116,25 @@ miner --organization <org-name> -O results.json
 
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
-| `--organization` | `-o` | GitHub organization name (required) | - |
+| `--organization` | `-o` | GitHub organization name | - |
+| `--repo` | `-r` | Single repository to scan (e.g. `OWASP/NodeGoat`) | - |
 | `--output` | `-O` | Output JSON file path | `results.json` |
 | `--workdir` | `-w` | Working directory for clones and databases | System temp directory |
 | `--packs-root` | `-p` | Path to local CodeQL query packs | Auto-detected |
 
+> At least one of `--organization` or `--repo` is required.
+
 ### Examples
 
 ```powershell
-# Basic usage (reads token from .env, detects packs automatically)
+# Scan all repos in an organization
 miner --organization pallets -O results.json
+
+# Scan a single repository
+miner --repo OWASP/NodeGoat -O nodegoat.json
+
+# Single repo with explicit organization
+miner --organization OWASP --repo NodeGoat -O nodegoat.json
 
 # With a specific working directory and packs root
 miner --organization expressjs -O results.json -w C:\work\miner-temp --packs-root C:\codeql-repo
@@ -132,6 +149,7 @@ The tool will display progress in the terminal, showing which repository is bein
 
 ### Example terminal output
 
+**Organization scan:**
 ```
 Using CodeQL packs from: C:\Users\you\codeql-repo
 Found 17 repositories.
@@ -141,6 +159,14 @@ Found 17 repositories.
   click: analyzed
   ...
 Results written to results.json
+```
+
+**Single repo scan:**
+```
+Using CodeQL packs from: C:\Users\you\codeql-repo
+Scanning single repository: OWASP/NodeGoat
+  NodeGoat: analyzed
+Results written to nodegoat.json
 ```
 
 ## Output Format
@@ -220,7 +246,7 @@ Installing the dependencies alone (`pip install -e ".[dev]"`) is **not enough**.
 3. Query packs are available — either a local `codeql-repo` clone (auto-detected) or packs downloaded from the registry.
 4. `git version` works from your terminal.
 
-If all four are met, `miner --organization <org-name> -O results.json` should produce a valid JSON report.
+If all four are met, `miner --organization <org-name> -O results.json` or `miner --repo <org>/<repo> -O results.json` should produce a valid JSON report.
 
 ## Running Tests
 
