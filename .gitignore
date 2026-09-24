@@ -17,6 +17,10 @@ env/
 # Cloned repositories
 repos/
 
+# SBOM output
+sboms/
+sbom-output/
+
 # CodeQL databases
 databases/
 

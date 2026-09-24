@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Optional
 
@@ -33,6 +34,7 @@ class RepositoryResult(BaseModel):
     languages: list[str] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
     error_message: Optional[str] = None
+    sbom: Optional["SbomResult"] = None
 
 
 class AnalysisSummary(BaseModel):
@@ -59,6 +61,53 @@ class OrganizationReport(BaseModel):
             )
         return {
             "organization": self.organization,
-            "summary": self.summary.model_dump(),
-            "repositories": [r.model_dump() for r in repos],
+            "summary": self.summary.model_dump(mode="json"),
+            "repositories": [r.model_dump(mode="json") for r in repos],
+        }
+
+
+class SbomStatus(str, Enum):
+    """Execution state of the SBOM generation for a single repository."""
+
+    SUCCESS = "success"
+    NO_COMPONENTS = "no_components"
+    FAILED = "failed"
+
+
+class SbomResult(BaseModel):
+    """SBOM generation result for a single repository."""
+
+    full_name: str
+    commit: Optional[str] = None
+    generated_at: datetime
+    syft_version: str
+    status: SbomStatus
+    components: int = 0
+    sbom_path: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class SbomSummary(BaseModel):
+    repositories: int
+    success: int
+    no_components: int
+    failed: int
+    components: int
+
+
+class SbomReport(BaseModel):
+    organization: str
+    generated_at: datetime
+    syft_version: str
+    summary: SbomSummary
+    repositories: list[SbomResult] = Field(default_factory=list)
+
+    def to_ordered_json(self) -> dict:
+        repos = sorted(self.repositories, key=lambda r: r.full_name)
+        return {
+            "organization": self.organization,
+            "generated_at": self.generated_at.isoformat(),
+            "syft_version": self.syft_version,
+            "summary": self.summary.model_dump(mode="json"),
+            "repositories": [r.model_dump(mode="json") for r in repos],
         }

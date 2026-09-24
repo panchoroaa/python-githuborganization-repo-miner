@@ -1,11 +1,17 @@
 """Tests for Pydantic models."""
 
+from datetime import datetime, timezone
+
 from miner.models import (
     AnalysisSummary,
     Finding,
     OrganizationReport,
     RepoStatus,
     RepositoryResult,
+    SbomReport,
+    SbomResult,
+    SbomStatus,
+    SbomSummary,
 )
 
 
@@ -147,3 +153,145 @@ def test_organization_report_empty():
     d = report.to_ordered_json()
     assert d["repositories"] == []
     assert d["summary"]["repositories"] == 0
+
+
+NOW = datetime(2026, 9, 24, 12, 0, 0, tzinfo=timezone.utc)
+
+
+def test_sbom_status_enum():
+    assert SbomStatus.SUCCESS.value == "success"
+    assert SbomStatus.NO_COMPONENTS.value == "no_components"
+    assert SbomStatus.FAILED.value == "failed"
+
+
+def test_sbom_result_defaults():
+    r = SbomResult(
+        full_name="org/repo",
+        generated_at=NOW,
+        syft_version="1.15.1",
+        status=SbomStatus.SUCCESS,
+    )
+    assert r.commit is None
+    assert r.components == 0
+    assert r.sbom_path is None
+    assert r.error_message is None
+
+
+def test_sbom_result_full():
+    r = SbomResult(
+        full_name="OWASP/NodeGoat",
+        commit="a" * 40,
+        generated_at=NOW,
+        syft_version="1.15.1",
+        status=SbomStatus.SUCCESS,
+        components=42,
+        sbom_path="sboms/NodeGoat.cdx.json",
+    )
+    assert r.full_name == "OWASP/NodeGoat"
+    assert r.commit == "a" * 40
+    assert r.components == 42
+    assert r.sbom_path == "sboms/NodeGoat.cdx.json"
+
+
+def test_sbom_result_no_components_is_not_failed():
+    """A successful run with 0 components must not be confused with a failure."""
+    no_components = SbomResult(
+        full_name="org/empty",
+        generated_at=NOW,
+        syft_version="1.15.1",
+        status=SbomStatus.NO_COMPONENTS,
+        components=0,
+        sbom_path="sboms/empty.cdx.json",
+    )
+    failed = SbomResult(
+        full_name="org/broken",
+        generated_at=NOW,
+        syft_version="1.15.1",
+        status=SbomStatus.FAILED,
+        error_message="syft crashed",
+    )
+    assert no_components.status != failed.status
+    assert no_components.error_message is None
+    assert failed.error_message == "syft crashed"
+
+
+def test_sbom_summary():
+    s = SbomSummary(
+        repositories=17,
+        success=12,
+        no_components=3,
+        failed=2,
+        components=842,
+    )
+    assert s.repositories == 17
+    assert s.components == 842
+    assert s.success + s.no_components + s.failed == s.repositories
+
+
+def test_sbom_report_to_ordered_json():
+    repos = [
+        SbomResult(
+            full_name="org/zeta",
+            generated_at=NOW,
+            syft_version="1.15.1",
+            status=SbomStatus.FAILED,
+            error_message="clone not found",
+        ),
+        SbomResult(
+            full_name="org/alpha",
+            commit="b" * 40,
+            generated_at=NOW,
+            syft_version="1.15.1",
+            status=SbomStatus.SUCCESS,
+            components=7,
+            sbom_path="sboms/alpha.cdx.json",
+        ),
+    ]
+    report = SbomReport(
+        organization="org",
+        generated_at=NOW,
+        syft_version="1.15.1",
+        summary=SbomSummary(
+            repositories=2, success=1, no_components=0, failed=1, components=7,
+        ),
+        repositories=repos,
+    )
+    d = report.to_ordered_json()
+
+    assert d["organization"] == "org"
+    assert d["generated_at"] == NOW.isoformat()
+    assert d["syft_version"] == "1.15.1"
+    assert d["repositories"][0]["full_name"] == "org/alpha"
+    assert d["repositories"][1]["full_name"] == "org/zeta"
+    assert d["repositories"][0]["status"] == "success"
+    assert d["repositories"][1]["status"] == "failed"
+    assert d["summary"]["components"] == 7
+
+
+def test_repository_result_without_sbom():
+    r = RepositoryResult(
+        name="test-repo",
+        url="https://github.com/org/test-repo",
+        status=RepoStatus.ANALYZED,
+    )
+    assert r.sbom is None
+
+
+def test_repository_result_with_sbom():
+    sbom = SbomResult(
+        full_name="org/test-repo",
+        generated_at=NOW,
+        syft_version="1.15.1",
+        status=SbomStatus.SUCCESS,
+        components=5,
+        sbom_path="sboms/test-repo.cdx.json",
+    )
+    r = RepositoryResult(
+        name="test-repo",
+        url="https://github.com/org/test-repo",
+        status=RepoStatus.ANALYZED,
+        sbom=sbom,
+    )
+    assert r.sbom is not None
+    assert r.sbom.status == SbomStatus.SUCCESS
+    assert r.sbom.components == 5
