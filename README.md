@@ -1,5 +1,7 @@
 # Python Miner
 
+**[English](README.md)** | [Español](README.es.md)
+
 A GitHub organization vulnerability miner that uses CodeQL to perform automated security analysis on all repositories of a GitHub organization, and [Syft](https://github.com/anchore/syft) to generate a Software Bill of Materials (SBOM) for each repository.
 
 ## Overview
@@ -475,6 +477,7 @@ python-miner/
 ├── .gitignore
 ├── .env.example
 ├── README.md
+├── README.es.md
 ├── src/
 │   └── miner/
 │       ├── __init__.py
