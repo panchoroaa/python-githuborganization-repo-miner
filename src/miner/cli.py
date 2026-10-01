@@ -36,6 +36,43 @@ SUPPORTED_CODEQL_LANGUAGES = {
     "csharp", "cpp", "c", "go", "ruby", "swift", "rust",
 }
 
+DEFAULT_SORT_BY = "stars"
+
+SORT_CRITERIA = {
+    "stars": "stargazers_count",
+    "forks": "forks_count",
+    "issues": "open_issues_count",
+    "size": "size",
+    "pushed": "pushed_at",
+    "updated": "updated_at",
+    "created": "created_at",
+    "name": "name",
+}
+
+
+def _apply_sort_limit(repos, limit: int | None, sort_by: str | None):
+    """Sort repositories by a criterion and optionally truncate to ``limit``.
+
+    Sorting is descending ("top N"). ``name`` is the exception and sorts
+    ascending (A→Z). When only ``--limit`` is given, defaults to sorting by
+    stars. Raises ``ValueError`` for an unknown criterion.
+    """
+    if limit is None and sort_by is None:
+        return repos
+
+    criterion = sort_by or DEFAULT_SORT_BY
+    field = SORT_CRITERIA.get(criterion)
+    if field is None:
+        raise ValueError(
+            f"Unknown --sort-by criterion '{criterion}'. "
+            f"Use one of: {', '.join(sorted(SORT_CRITERIA))}."
+        )
+
+    ordered = sorted(repos, key=lambda r: getattr(r, field), reverse=field != "name")
+    if limit is not None:
+        return ordered[:limit]
+    return ordered
+
 
 @app.command()
 def scan(
@@ -50,6 +87,8 @@ def scan(
         "--fetch-packs/--no-fetch-packs",
         help="Clone github/codeql query packs automatically when no local packs are found",
     ),
+    limit: int = typer.Option(None, "--limit", "-n", min=1, help="Process at most this many repositories (e.g. --limit 30 for the top 30)"),
+    sort_by: str = typer.Option(None, "--sort-by", help="Criterion to pick repositories: stars, forks, issues, size, pushed, updated, created, name (e.g. --limit 30 --sort-by stars)"),
 ) -> None:
     """Scan a GitHub organization's repositories (or a single repo) for vulnerabilities using CodeQL."""
 
@@ -100,6 +139,18 @@ def scan(
             console.print(f"[bold red]Error fetching repositories:[/] {e}")
             raise typer.Exit(1)
         console.print(f"[green]Found {len(repos)} repositories.[/]")
+        if limit is not None or sort_by:
+            try:
+                repos = _apply_sort_limit(repos, limit, sort_by)
+            except ValueError as e:
+                console.print(f"[bold red]Error:[/] {e}")
+                raise typer.Exit(1)
+            criterion = sort_by or DEFAULT_SORT_BY
+            suffix = f", max {limit}" if limit is not None else ""
+            console.print(
+                f"[green]Processing {len(repos)} repositories[/] "
+                f"(top by '{criterion}'{suffix})."
+            )
 
     results: list[RepositoryResult] = []
 
@@ -154,6 +205,8 @@ def sbom(
     repo: str = typer.Option(None, "--repo", "-r", help="Single repository (e.g. OWASP/NodeGoat or just NodeGoat with -o)"),
     workdir: str = typer.Option("repos", "--workdir", "-w", help="Directory containing already-cloned repositories"),
     output_dir: str = typer.Option("sbom-output", "--output-dir", "-O", help="Output directory for SBOM files and report"),
+    limit: int = typer.Option(None, "--limit", "-n", min=1, help="Process at most this many repositories (e.g. --limit 30 for the top 30)"),
+    sort_by: str = typer.Option(None, "--sort-by", help="Criterion to pick repositories: stars, forks, issues, size, pushed, updated, created, name (e.g. --limit 30 --sort-by stars)"),
 ) -> None:
     """Generate CycloneDX JSON SBOMs for an organization's cloned repositories using Syft (no CodeQL)."""
 
@@ -186,6 +239,18 @@ def sbom(
             console.print(f"[bold red]Error fetching repositories:[/] {e}")
             raise typer.Exit(1)
         console.print(f"[green]Found {len(repos)} repositories.[/]")
+        if limit is not None or sort_by:
+            try:
+                repos = _apply_sort_limit(repos, limit, sort_by)
+            except ValueError as e:
+                console.print(f"[bold red]Error:[/] {e}")
+                raise typer.Exit(1)
+            criterion = sort_by or DEFAULT_SORT_BY
+            suffix = f", max {limit}" if limit is not None else ""
+            console.print(
+                f"[green]Processing {len(repos)} repositories[/] "
+                f"(top by '{criterion}'{suffix})."
+            )
 
     out_dir = Path(output_dir)
     sboms_dir = out_dir / "sboms"

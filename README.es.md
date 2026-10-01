@@ -165,6 +165,14 @@ La CLI tiene dos comandos:
 miner scan --organization <org-name> -O results.json
 ```
 
+Escaneá solo un conjunto limitado — por ejemplo los **30 repositorios con más estrellas** (los repos se ordenan descendente según el criterio elegido; cuando solo se pasa `--limit`, el orden por defecto es por estrellas):
+
+```powershell
+miner scan --organization <org-name> -O results.json --limit 30 --sort-by stars
+```
+
+Criterios disponibles para `--sort-by`: `stars`, `forks`, `issues`, `size`, `pushed`, `updated`, `created`, `name` (A→Z).
+
 ### Escanear un solo repositorio
 
 ```powershell
@@ -210,6 +218,8 @@ Los repositorios que no fueron clonados (no existen en `--workdir`) se reportan 
 | `--packs-root` | `-p` | Ruta a los query packs locales de CodeQL | Auto-detectada |
 | `--fetch-packs/--no-fetch-packs` | | Auto-clonar `github/codeql` cuando no se encuentran packs locales | Activado |
 | `--sbom-dir` | | Directorio donde se escriben los SBOM por repositorio | `sboms` |
+| `--limit` | `-n` | Procesar como máximo esta cantidad de repositorios (ej. `--limit 30`) | Todos |
+| `--sort-by` | | Criterio para elegir repositorios: `stars`, `forks`, `issues`, `size`, `pushed`, `updated`, `created`, `name` | `stars` (solo cuando se usa `--limit`) |
 
 ### Opciones — `miner sbom`
 
@@ -219,6 +229,8 @@ Los repositorios que no fueron clonados (no existen en `--workdir`) se reportan 
 | `--repo` | `-r` | Repositorio único (ej. `OWASP/NodeGoat`) | - |
 | `--workdir` | `-w` | Directorio que contiene los repositorios ya clonados | `repos` |
 | `--output-dir` | `-O` | Directorio de salida para los archivos SBOM y el reporte | `sbom-output` |
+| `--limit` | `-n` | Procesar como máximo esta cantidad de repositorios (ej. `--limit 30`) | Todos |
+| `--sort-by` | | Criterio para elegir repositorios: `stars`, `forks`, `issues`, `size`, `pushed`, `updated`, `created`, `name` | `stars` (solo cuando se usa `--limit`) |
 
 > Para ambos comandos se requiere al menos uno de `--organization` o `--repo`.
 

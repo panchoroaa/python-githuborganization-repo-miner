@@ -70,6 +70,32 @@ class TestFetchRepos:
 
         assert repos == []
 
+    @patch("miner.github.requests.get")
+    def test_populates_metadata_fields(self, mock_get):
+        mock_response = MagicMock()
+        mock_response.json.return_value = [
+            {"name": "repo1", "clone_url": "https://github.com/org/repo1.git",
+             "languages_url": "https://api.github.com/repos/org/repo1/languages",
+             "default_branch": "main",
+             "stargazers_count": 42, "forks_count": 7, "open_issues_count": 3,
+             "size": 1000, "created_at": "2020-01-01T00:00:00Z",
+             "updated_at": "2021-01-01T00:00:00Z", "pushed_at": "2022-01-01T00:00:00Z"},
+        ]
+        mock_response.raise_for_status = MagicMock()
+        mock_get.return_value = mock_response
+
+        with patch("miner.github._get_token", return_value="fake-token"):
+            repos = fetch_repos("test-org")
+
+        repo = repos[0]
+        assert repo.stargazers_count == 42
+        assert repo.forks_count == 7
+        assert repo.open_issues_count == 3
+        assert repo.size == 1000
+        assert repo.created_at == "2020-01-01T00:00:00Z"
+        assert repo.updated_at == "2021-01-01T00:00:00Z"
+        assert repo.pushed_at == "2022-01-01T00:00:00Z"
+
 
 class TestFetchLanguages:
     @patch("miner.github._get_token", return_value="fake-token")

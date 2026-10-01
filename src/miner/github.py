@@ -37,6 +37,13 @@ class GitHubRepo:
     clone_url: str
     languages_url: str
     default_branch: str
+    stargazers_count: int = 0
+    forks_count: int = 0
+    open_issues_count: int = 0
+    size: int = 0
+    created_at: str = ""
+    updated_at: str = ""
+    pushed_at: str = ""
 
 
 def _get_token() -> str:
@@ -74,6 +81,13 @@ def fetch_repos(organization: str) -> list[GitHubRepo]:
                     clone_url=repo["clone_url"],
                     languages_url=repo["languages_url"],
                     default_branch=repo.get("default_branch", "main"),
+                    stargazers_count=repo.get("stargazers_count") or 0,
+                    forks_count=repo.get("forks_count") or 0,
+                    open_issues_count=repo.get("open_issues_count") or 0,
+                    size=repo.get("size") or 0,
+                    created_at=repo.get("created_at") or "",
+                    updated_at=repo.get("updated_at") or "",
+                    pushed_at=repo.get("pushed_at") or "",
                 )
             )
         if len(data) < 100:
