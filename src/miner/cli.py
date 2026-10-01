@@ -12,7 +12,7 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
-from .codeql import create_database, detect_packs_root, run_analysis
+from .codeql import create_database, detect_packs_root, fetch_packs_root, run_analysis
 from .github import fetch_languages, fetch_repos
 from .git_ops import cleanup, clone_repo
 from .models import (
@@ -33,7 +33,7 @@ console = Console()
 
 SUPPORTED_CODEQL_LANGUAGES = {
     "python", "java", "javascript", "typescript",
-    "csharp", "cpp", "c", "go", "ruby", "swift",
+    "csharp", "cpp", "c", "go", "ruby", "swift", "rust",
 }
 
 
@@ -45,6 +45,11 @@ def scan(
     workdir: str = typer.Option(None, "--workdir", "-w", help="Working directory for clones and databases"),
     packs_root: str = typer.Option(None, "--packs-root", "-p", help="Path to CodeQL query packs (codeql-repo). Detected automatically if omitted."),
     sbom_dir: str = typer.Option("sboms", "--sbom-dir", help="Output directory for SBOM (CycloneDX JSON) files"),
+    fetch_packs: bool = typer.Option(
+        True,
+        "--fetch-packs/--no-fetch-packs",
+        help="Clone github/codeql query packs automatically when no local packs are found",
+    ),
 ) -> None:
     """Scan a GitHub organization's repositories (or a single repo) for vulnerabilities using CodeQL."""
 
@@ -55,6 +60,16 @@ def scan(
     org_name, repo_name = _parse_target(organization, repo)
 
     packs = Path(packs_root) if packs_root else detect_packs_root()
+
+    if packs is None and not packs_root and fetch_packs:
+        console.print("[cyan]No local CodeQL packs found; cloning github/codeql (shallow clone, may take a while)...[/]")
+        try:
+            packs = fetch_packs_root()
+            console.print(f"[green]CodeQL packs ready at:[/] {packs}")
+        except Exception as e:
+            console.print(f"[bold red]Could not fetch CodeQL packs:[/] {e}")
+            packs = None
+
     if packs is None:
         console.print("[yellow]No local CodeQL packs root found; using registry packs codeql/<lang>-security-extended.[/]")
     else:

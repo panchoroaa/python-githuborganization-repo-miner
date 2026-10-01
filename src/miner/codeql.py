@@ -23,7 +23,16 @@ LANGUAGE_SUITES = {
     "go": "go-security-extended",
     "ruby": "ruby-security-extended",
     "swift": "swift-security-extended",
+    "rust": "rust-security-extended",
 }
+
+DEFAULT_PACKS_URL = "https://github.com/github/codeql"
+
+
+def _is_packs_root(path: Path) -> bool:
+    return (path / "codeql-workspace.yml").exists() or (
+        path / "python" / "ql" / "src" / "qlpack.yml"
+    ).exists()
 
 
 def detect_packs_root() -> Path | None:
@@ -37,11 +46,37 @@ def detect_packs_root() -> Path | None:
         Path.cwd() / "codeql-repo",
     ]
     for candidate in candidates:
-        if (candidate / "codeql-workspace.yml").exists() or (
-            candidate / "python" / "ql" / "src" / "qlpack.yml"
-        ).exists():
+        if _is_packs_root(candidate):
             return candidate
     return None
+
+
+def fetch_packs_root(dest: Path | None = None) -> Path:
+    """Download the github/codeql query-packs repository for use as packs root.
+
+    By default clones (shallow, ``--depth 1``) into ``~/cybersec/codeql-repo``.
+    Returns the destination path, or the existing destination untouched when it
+    is already a valid packs root. Raises ``RuntimeError`` if the destination
+    exists but is not a valid packs root, or if the clone fails.
+    """
+    if dest is None:
+        dest = Path.home() / "cybersec" / "codeql-repo"
+
+    if _is_packs_root(dest):
+        return dest
+
+    if dest.exists() and any(dest.iterdir()):
+        raise RuntimeError(
+            f"Destination {dest} exists but is not a valid CodeQL packs root. "
+            "Remove it or pass --packs-root explicitly."
+        )
+
+    dest.mkdir(parents=True, exist_ok=True)
+    _run([
+        "git", "clone", "--depth", "1", "--single-branch",
+        DEFAULT_PACKS_URL, str(dest),
+    ])
+    return dest
 
 
 def _run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:

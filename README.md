@@ -104,20 +104,22 @@ The miner needs CodeQL query packs to run security analyses. There are two ways 
 
 **Option A — Local query repository (recommended):**
 
-Clone the [codeql/queries](https://github.com/github/codeql) repository:
+The miner can **auto-download** the packs automatically. If no local packs are found, `miner scan` clones [github/codeql](https://github.com/github/codeql) (shallow, `--depth 1`) into `~/cybersec/codeql-repo` and uses it. Disable with `--no-fetch-packs`, or clone it manually:
 
 ```powershell
-git clone https://github.com/github/codeql ~/codeql-repo
+git clone https://github.com/github/codeql ~/cybersec/codeql-repo
 ```
 
-The miner **auto-detects** the packs at these locations (in order):
+If the destination already exists but is not a valid packs root, the miner reports the error and falls back to registry packs instead of deleting anything.
+
+The miner **discovers** the packs at these locations (in order):
 
 1. `CODEQL_PACK_ROOT` environment variable
 2. `~/cybersec/codeql-repo`
 3. `~/codeql-repo`
 4. `./codeql-repo` (current directory)
 
-You can also pass the path explicitly with `--packs-root`:
+You can also pass the path explicitly with `--packs-root` (when given explicitly, the miner never auto-downloads):
 
 ```powershell
 miner scan --organization example-org -O results.json --packs-root C:\path\to\codeql-repo
@@ -133,6 +135,18 @@ codeql pack download codeql/java-security-extended
 codeql pack download codeql/javascript-security-extended
 # ... and other languages as needed
 ```
+
+### Supported languages
+
+The miner analyzes repositories whose languages (as reported by the GitHub API) include at least one of the CodeQL-supported ones:
+
+```
+python, java, javascript, typescript, csharp, cpp, c, go, ruby, swift, rust
+```
+
+- `typescript` and `c` reuse the `javascript` and `cpp` query suites respectively.
+- C#/C++/C/Go/Swift/Rust normally require a successful project build to create the CodeQL database; Python/JavaScript/TypeScript are analyzed "buildless".
+- Repositories with no supported language get status `unsupported_language` and are skipped (SBOMs are still generated when Syft is available).
 
 ## Usage
 
@@ -192,6 +206,7 @@ Repositories that were not cloned (missing in `--workdir`) are reported with sta
 | `--output` | `-O` | Output JSON file path | `results.json` |
 | `--workdir` | `-w` | Working directory for clones and databases. Clones are **kept** when provided, deleted when omitted (temp dir) | System temp directory |
 | `--packs-root` | `-p` | Path to local CodeQL query packs | Auto-detected |
+| `--fetch-packs/--no-fetch-packs` | | Auto-clone `github/codeql` when no local packs are found | Enabled |
 | `--sbom-dir` | | Directory where per-repo SBOM files are written | `sboms` |
 
 ### Options — `miner sbom`
@@ -440,7 +455,7 @@ Installing the dependencies alone (`pip install -e ".[dev]"`) is **not enough**.
 
 1. `.env` file exists with `GITHUB_TOKEN=ghp_...` (see [GitHub Token](#github-token)).
 2. `codeql version` works from your terminal.
-3. Query packs are available — either a local `codeql-repo` clone (auto-detected) or packs downloaded from the registry.
+3. Query packs are available — normally **auto-downloaded** by the miner on first `scan` (see [CodeQL Query Packs](#codeql-query-packs)); or disable that with `--no-fetch-packs` and provide them yourself.
 4. `syft version` works from your terminal (only if you want SBOMs).
 5. `git version` works from your terminal.
 
