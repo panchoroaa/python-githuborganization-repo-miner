@@ -147,6 +147,8 @@ python, java, javascript, typescript, csharp, cpp, c, go, ruby, swift, rust
 ```
 
 - `typescript` y `c` reutilizan las suites de consultas de `javascript` y `cpp` respectivamente.
+- GitHub reporta `C++` y `C#`; el miner los mapea a `cpp` y `csharp` de CodeQL.
+- Se intentan **todos** los lenguajes soportados del repositorio. Si uno falla (ej. un lenguaje que requiere build sin sistema de build), se omite **con una nota** y los demás lenguajes se siguen analizando. El repositorio queda `analyzed` siempre que al menos un lenguaje tenga éxito; recién si **todos** fallan pasa a `database_failed`/`analysis_failed`.
 - C#/C++/C/Go/Swift/Rust normalmente requieren que el proyecto se compile correctamente para poder crear la base de datos de CodeQL; Python/JavaScript/TypeScript se analizan "buildless" (sin compilación).
 - Los repositorios sin ningún lenguaje soportado reciben el estado `unsupported_language` y se omiten (aun así se generan los SBOM cuando Syft está disponible).
 

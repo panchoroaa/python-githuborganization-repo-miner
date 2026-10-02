@@ -36,6 +36,25 @@ SUPPORTED_CODEQL_LANGUAGES = {
     "csharp", "cpp", "c", "go", "ruby", "swift", "rust",
 }
 
+# GitHub reports some languages with different names than CodeQL uses.
+LANGUAGE_NAME_ALIASES = {
+    "c++": "cpp",
+    "c#": "csharp",
+}
+
+
+def _normalize_language(language: str) -> str:
+    """Map a GitHub API language name to a CodeQL language id (lowercase)."""
+    return LANGUAGE_NAME_ALIASES.get(language.lower(), language.lower())
+
+
+def _truncate(message: str, limit: int = 160) -> str:
+    """Collapse whitespace and truncate long messages for compact reports."""
+    message = " ".join(message.split())
+    if len(message) <= limit:
+        return message
+    return message[: limit - 3] + "..."
+
 DEFAULT_SORT_BY = "stars"
 
 SORT_CRITERIA = {
@@ -359,7 +378,11 @@ def _analyze_repo(
     except Exception:
         languages = []
 
-    codeql_langs = [l.lower() for l in languages if l.lower() in SUPPORTED_CODEQL_LANGUAGES]
+    codeql_langs: list[str] = []
+    for l in languages:
+        norm = _normalize_language(l)
+        if norm in SUPPORTED_CODEQL_LANGUAGES and norm not in codeql_langs:
+            codeql_langs.append(norm)
 
     try:
         clone_repo(clone_url, repo_dir)
@@ -391,7 +414,9 @@ def _analyze_repo(
         )
 
     all_findings = []
-    analyzed_langs = []
+    analyzed_langs: list[str] = []
+    db_failures: list[str] = []
+    analysis_failures: list[str] = []
 
     for lang in codeql_langs:
         db_dir = base_dir / f"{name}-{lang}-db"
@@ -400,18 +425,10 @@ def _analyze_repo(
         try:
             create_database(lang, repo_dir, db_dir)
         except Exception as e:
-            if not keep_clones:
-                cleanup(repo_dir)
+            db_failures.append(f"{lang}: {_truncate(str(e))}")
             if db_dir.exists():
                 cleanup(db_dir)
-            return RepositoryResult(
-                name=name,
-                url=repo_url,
-                status=RepoStatus.DATABASE_FAILED,
-                languages=languages,
-                error_message=f"CodeQL database creation failed for {lang}: {e}",
-                sbom=sbom_result,
-            )
+            continue
 
         try:
             run_analysis(db_dir, lang, sarif_path, packs_root)
@@ -419,35 +436,42 @@ def _analyze_repo(
             all_findings.extend(findings)
             analyzed_langs.append(lang)
         except Exception as e:
-            if not keep_clones:
-                cleanup(repo_dir)
-            if db_dir.exists():
-                cleanup(db_dir)
-            if sarif_path.exists():
-                sarif_path.unlink()
-            return RepositoryResult(
-                name=name,
-                url=repo_url,
-                status=RepoStatus.ANALYSIS_FAILED,
-                languages=languages,
-                error_message=f"CodeQL analysis failed for {lang}: {e}",
-                sbom=sbom_result,
-            )
+            analysis_failures.append(f"{lang}: {_truncate(str(e), 200)}")
         finally:
             if db_dir.exists():
                 cleanup(db_dir)
             if sarif_path.exists():
                 sarif_path.unlink()
 
+    if not analyzed_langs:
+        if not keep_clones:
+            cleanup(repo_dir)
+        if analysis_failures:
+            status = RepoStatus.ANALYSIS_FAILED
+            message = "CodeQL analysis failed: " + "; ".join(analysis_failures)
+        else:
+            status = RepoStatus.DATABASE_FAILED
+            message = "CodeQL database creation failed: " + "; ".join(db_failures)
+        return RepositoryResult(
+            name=name,
+            url=repo_url,
+            status=status,
+            languages=languages,
+            error_message=message,
+            sbom=sbom_result,
+        )
+
     if not keep_clones:
         cleanup(repo_dir)
 
+    failures = db_failures + analysis_failures
     return RepositoryResult(
         name=name,
         url=repo_url,
         status=RepoStatus.ANALYZED,
         languages=languages,
         findings=all_findings,
+        error_message=("Skipped languages: " + "; ".join(failures)) if failures else None,
         sbom=sbom_result,
     )
 
